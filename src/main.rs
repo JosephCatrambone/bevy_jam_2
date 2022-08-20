@@ -1,15 +1,35 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext, EguiPlugin};
 
+mod actors;
+mod components;
+mod systems;
+
 const WINDOW_TITLE: &str = "Bevy Jam 2";
 const TITLE_SCREEN: &str = "title.png";
 const PLAYER_SPRITESHEET: &str = "player.png";
 const TILESET_RESOURCE: &str = "tileset.png";
 
-struct GameTextures {
+pub struct SpriteSheets {
 	title_screen: Handle<Image>,
 	player: Handle<TextureAtlas>,
 	tileset: Handle<TextureAtlas>,
+}
+
+pub struct GamePauseMode {
+	menu_visible: bool,
+	screen_transition: bool,
+	dialog_active: bool,
+}
+
+impl Default for GamePauseMode {
+	fn default() -> Self {
+		GamePauseMode {
+			menu_visible: false,
+			screen_transition: false,
+			dialog_active: false,
+		}
+	}
 }
 
 fn main() {
@@ -21,8 +41,10 @@ fn main() {
 			height: 720.0,
 			..Default::default()
 		})
+		.insert_resource(GamePauseMode)
 		.add_plugins(DefaultPlugins)
 		.add_plugin(EguiPlugin)
+		.add_plugin(actors::player::PlayerPlugin)
 		.add_startup_system(setup_system)
 		// Systems that create Egui widgets should be run during the `CoreStage::Update` stage,
 		// or after the `EguiSystem::BeginFrame` system (which belongs to the `CoreStage::PreUpdate` stage).
@@ -48,7 +70,7 @@ fn setup_system(
 	let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(64., 64.), 4, 4);
 	let tileset = texture_atlases.add(texture_atlas);
 
-	commands.insert_resource(GameTextures {
+	commands.insert_resource(SpriteSheets {
 		title_screen: asset_server.load(TITLE_SCREEN),
 		player: player,
 		tileset: tileset,

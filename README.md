@@ -12,3 +12,9 @@ A public repository for the second Bevy Game Jam!
 ## MVP for idea:
 - Top-down game @ 720P
 - Move and interact with WASD + jkl;.
+
+## Project Structure:
+- main.rs - Where all of the magic happens.
+- components - Directory with reusable general components.
+- systems - The methods which work on the components.
+- actors - Bundles of specific components and/or systems, plus their plugins.
