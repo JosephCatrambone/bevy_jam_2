@@ -6,10 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = "0.8"
-bevy_egui = "0.15"
-bevy-inspector-egui = "0.12.0"
-rand = "0.8.5"
+bevy = "^0.8"
+bevy_ecs_ldtk = "^0.4"
+bevy_egui = "^0.15"
+bevy-inspector-egui = "^0.12"
+rand = "^0.8"
+#serde = { version = "1", features = ["derive"] }
+#serde_json = "^1.0"
 
 [profile.dev.package."*"]
 opt-level = 3
