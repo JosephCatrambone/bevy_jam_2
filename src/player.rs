@@ -2,13 +2,14 @@ use crate::resources;
 use crate::resources::*;
 use crate::components;
 use crate::components::*;
+use crate::level::ENTITY_Z;
 use bevy::prelude::*;
 use bevy::time::FixedTimestep;
 use rand::{Rng, thread_rng};
 
 // Constants:
 
-const PLAYER_RENDER_PRIORITY:f32 = 0.0;
+const PLAYER_RENDER_PRIORITY:f32 = ENTITY_Z;
 
 // Plugin/Setup:
 
@@ -35,9 +36,10 @@ pub struct Player;
 
 // Resources
 
+pub struct PlayerStart(Vec2);  // Used if a player happens to fall outside of the map.
+
 pub struct PlayerState {
 	pub max_speed: f32,
-	pub location: (f32, f32), // Copied from the player's transform and used so that enemies can get the player's position.
 	pub dead: bool,
 }
 
@@ -45,11 +47,12 @@ impl Default for PlayerState {
 	fn default() -> Self {
 		PlayerState {
 			max_speed: 100f32,
-			location: (0f32, 0f32),
 			dead: false,
 		}
 	}
 }
+
+pub struct PlayerDeathEvent(Entity);
 
 // Systems and methods:
 
@@ -86,19 +89,33 @@ fn respawn_player(
 		.spawn_bundle(ssb)
 		.insert(Health { max: 3, current: 3 })
 		.insert(Velocity { dx: 0.0, dy: 0.0 })
+		.insert(RigidBody {
+			mass: 1.0,
+			size: Vec2::new(8.0, 8.0),
+			layers: PhysicsLayer::ACTOR,
+		})
 		.insert(Player);
 }
 
+pub fn player_oob_system(
+	oob_target: Res<PlayerStart>,
+	query: Query<(&mut Transform, With<Player>)>,
+) {
+	// If the player somehow ends up out-of-bounds,
+}
+
 fn check_for_player_death(
-	mut commands: Commands,
+	//mut commands: Commands,
+	//mut ev_playerdeath: EventWriter<PlayerDeathEvent>,
 	query: Query<(Entity, &Health, With<Player>)>,
 ) {
 	//let (entity, player_health, _) = query.single();
-	if let Some((entity, player_health, _)) = query.iter().next() {
+	//let (entity, player_health, _) = query.single_mut();
+	for (entity, player_health, _) in query.iter() {
 		if player_health.current <= 0 {
 			// Player is dead.  :'(
-
 			//commands.entity(entity).despawn();
+			//ev_playerdeath.send(PlayerDeathEvent(entity));
 		}
 	}
 }

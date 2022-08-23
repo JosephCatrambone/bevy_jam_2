@@ -1,4 +1,6 @@
 use bevy::prelude::*;
+use bevy::sprite::Rect;
+use bitflags::bitflags;
 
 pub enum Direction {
 	None,
@@ -6,6 +8,16 @@ pub enum Direction {
 	Up,
 	Left,
 	Down,
+}
+
+bitflags! {
+	#[derive(Component, Default)]
+	pub struct PhysicsLayer: u32 {
+		// const None =  0b00000000;   Per bitset library: Don't define 'none'.
+		const WORLD = 0b00000001;
+		const ACTOR = 0b00000010;
+		const ALL = Self::WORLD.bits | Self::ACTOR.bits;
+	}
 }
 
 #[derive(Clone, Component)]
@@ -30,4 +42,25 @@ impl Velocity {
 			_ => Direction::None,
 		}
 	}
+}
+
+// Transforms for these are separate.
+
+#[derive(Clone, Component, Debug, Default)]
+pub struct Area2d {
+	pub size: Vec2,
+	pub layers: PhysicsLayer,
+}
+
+#[derive(Clone, Component, Debug, Default)]
+pub struct RigidBody {
+	pub mass: f32,
+	pub size: Vec2,
+	pub layers: PhysicsLayer,
+}
+
+#[derive(Clone, Component, Debug, Default)]
+pub struct StaticBody {
+	pub size: Vec2,
+	pub layers: PhysicsLayer,
 }

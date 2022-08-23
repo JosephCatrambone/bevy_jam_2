@@ -1,11 +1,12 @@
-use crate::systems::movement_system;
 use bevy::prelude::*;
+use bevy::render::render_resource::TextureSampleType;
 use bevy::render::texture::ImageSampler;
 use bevy_ecs_ldtk::prelude::*;
 use bevy_egui::{egui, EguiContext, EguiPlugin};
 
-mod actors;
 mod components;
+mod level;
+mod player;
 mod resources;
 mod systems;
 
@@ -32,9 +33,17 @@ fn main() {
 		// Systems that create Egui widgets should be run during the `CoreStage::Update` stage,
 		// or after the `EguiSystem::BeginFrame` system (which belongs to the `CoreStage::PreUpdate` stage).
 		.add_system(ui_example)
-		.add_system(movement_system)
-		.add_plugin(actors::player::PlayerPlugin)
-		.register_ldtk_entity::<resources::LevelDoor>("Door")
+		.add_system(systems::movement_system)
+		.add_system(systems::camera_follow_system)
+		.add_system(systems::static_dynamic_collision_system)
+		.add_system(systems::dynamic_dynamic_collision_system)
+		.add_plugin(player::PlayerPlugin)
+		.add_system(level::make_collision_object_system)
+		.add_system(level::process_spawned_level_entity)
+		.add_system(level::process_spawned_level_layers)
+		//.register_ldtk_int_cell::<level::WallBundle>(1) // This should match up with 'WALL' on the collision layer.
+		.register_ldtk_int_cell_for_layer::<level::WallBundle>(level::COLLISION_LAYER_NAME, 1) // This should match up with 'WALL' on the collision layer.
+		.register_ldtk_entity::<level::LevelDoor>("DOOR")
 		.insert_resource(LevelSelection::Index(0))
 		.run();
 }
@@ -51,30 +60,39 @@ fn setup_system(
 
 	// Load player spritesheet.
 	let player_spritesheet_handle = asset_server.load(PLAYER_SPRITESHEET);
-	let player_spritesheet_atlas = TextureAtlas::from_grid(player_spritesheet_handle, Vec2::new(64.0, 64.0), 10, 10);
+	let player_spritesheet_atlas = TextureAtlas::from_grid(player_spritesheet_handle, Vec2::new(16.0, 16.0), 2, 4);
 	let player = texture_atlases.add(player_spritesheet_atlas);
 
 	// 1280 wide screen / 64 pixel tiles -> 20 tiles wide
-	let texture_handle = asset_server.load(TILESET_RESOURCE);
-	let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(64., 64.), 4, 4);
-	let tileset = texture_atlases.add(texture_atlas);
+	//let texture_handle = asset_server.load(TILESET_RESOURCE);
+	//let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(64., 64.), 4, 4);
+	//let tileset = texture_atlases.add(texture_atlas);
 
 	// Add the sprite sheet resource.
 	commands.insert_resource(resources::SpriteSheets {
 		title_screen: asset_server.load(TITLE_SCREEN),
 		player: player,
-		tileset: tileset,
 	});
 
 	// Load the map.
-	commands.spawn_bundle(LdtkWorldBundle {
+	let mut ldtk_world_map = LdtkWorldBundle {
 		ldtk_handle: asset_server.load("maps.ldtk"),
 		..Default::default()
-	});
+	};
+	commands.spawn_bundle(ldtk_world_map);
 }
 
-fn ui_example(mut egui_context: ResMut<EguiContext>) {
+fn ui_example(
+	mut egui_context: ResMut<EguiContext>
+) {
 	egui::Window::new("Debug").show(egui_context.ctx_mut(), |ui| {
 		ui.label("world");
 	});
+}
+
+fn dbg_player_info(
+	mut egui_context: ResMut<EguiContext>,
+	query: Query<(), With<Player>>
+) {
+	
 }
