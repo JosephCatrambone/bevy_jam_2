@@ -4,7 +4,7 @@ use bevy_ecs_ldtk::LdtkEntity;
 
 pub struct SpriteSheets {
 	pub title_screen: Handle<Image>,
-	pub player: Handle<TextureAtlas>,
+	//pub player: Handle<TextureAtlas>,
 }
 
 pub struct GamePauseMode {

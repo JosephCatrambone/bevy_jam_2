@@ -1,3 +1,4 @@
+use std::time::Duration;
 use bevy::prelude::*;
 use bevy::sprite::Rect;
 use bitflags::bitflags;
@@ -25,6 +26,9 @@ pub struct Health {
 	pub current: i8,
 	pub max: u8,
 }
+
+#[derive(Component)]
+pub struct LastFacing(pub Direction);
 
 #[derive(Clone, Component)]
 pub struct Velocity {
@@ -63,4 +67,10 @@ pub struct RigidBody {
 pub struct StaticBody {
 	pub size: Vec2,
 	pub layers: PhysicsLayer,
+}
+
+#[derive(Clone, Component, Debug)]
+pub struct Knockback {
+	pub impulse: Vec2, // force = mass * acceleration.  impulse = mass * delta velocity = f_avg * delta t
+	pub duration: Duration,
 }

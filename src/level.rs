@@ -1,7 +1,7 @@
 use crate::components::Area2d;
 use crate::components::PhysicsLayer;
 use crate::components::StaticBody;
-use crate::player::Player;
+use crate::player::{Player, PlayerRestartPosition};
 use bevy::prelude::*;
 use bevy::sprite::Rect;
 use bevy_ecs_ldtk::prelude::*;
@@ -22,8 +22,39 @@ const GROUND_DECORATION_NAME: &str = "GROUND_DECO";
 const GROUND_DECORATION_Z: f32 = 2.;
 const GROUND_NAME: &str = "GROUND";
 const GROUND_Z: f32 = 1.;
-pub const COLLISION_LAYER_NAME: &str = "COLLISION";
+const COLLISION_LAYER_NAME: &str = "COLLISION";
 const COLLISION_Z: f32 = -1.;
+
+pub struct LevelPlugin;
+
+impl Plugin for LevelPlugin {
+	fn build(&self, app: &mut App) {
+		//app.insert_resource(PlayerRestartPosition::default());
+		//app.add_startup_system(add_player_state);
+		//app.add_system(player_keyboard_event_system);
+		app.add_plugin(LdtkPlugin);
+		app.add_startup_system(setup_system);
+		app.add_system(make_collision_object_system);
+		app.add_system(process_spawned_level_entity);
+		app.add_system(process_spawned_level_layers);
+		//.register_ldtk_int_cell::<level::WallBundle>(1) // This should match up with 'WALL' on the collision layer.
+		app.register_ldtk_int_cell_for_layer::<WallBundle>(COLLISION_LAYER_NAME, 1); // This should match up with 'WALL' on the collision layer.
+		app.register_ldtk_entity::<LevelDoor>("DOOR");
+		app.insert_resource(LevelSelection::Index(0));
+	}
+}
+
+fn setup_system(
+	mut commands: Commands,
+	mut asset_server: ResMut<AssetServer>,
+) {
+	// Load the map.
+	let mut ldtk_world_map = LdtkWorldBundle {
+		ldtk_handle: asset_server.load("maps.ldtk"),
+		..Default::default()
+	};
+	commands.spawn_bundle(ldtk_world_map);
+}
 
 // Region -- Level Door Handling
 
@@ -75,7 +106,6 @@ impl LdtkEntity for LevelDoor {
 				sprite.color = color;
 			}
 		}
-
 
 		let origin:Vec2 = Vec2::new(entity_instance.px.x as f32, entity_instance.px.y as f32);
 
@@ -147,12 +177,17 @@ pub struct WallBundle {
 // Better to use the .register_ldtk_entity::<resources::LevelDoor>("Door") method, but this is an option.
 pub fn process_spawned_level_entity(
 	mut commands: Commands,
+	mut player_start: ResMut<PlayerRestartPosition>,
 	entity_query: Query<(Entity, &Transform, &EntityInstance), Added<EntityInstance>>,
 	mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 	asset_server: Res<AssetServer>,
 ) {
 	for (entity, transform, entity_instance) in entity_query.iter() {
-		if entity_instance.identifier == *"MyEntityIdentifier" {
+		if entity_instance.identifier == *"PLAYER_SPAWN" {
+			player_start.position.x = transform.translation.x;
+			player_start.position.y = transform.translation.y;
+		}
+		else if entity_instance.identifier == *"MyEntityIdentifier" {
 			let tileset = asset_server.load("atlas/MV Icons Complete Sheet Free - ALL.png");
 
 			if let Some(tile) = &entity_instance.tile {
@@ -333,16 +368,14 @@ pub fn make_collision_object_system(
 						level
 							.spawn()
 							.insert(StaticBody {
-								size: Vec2::new((wall_rect.right-wall_rect.left) as f32, (wall_rect.top-wall_rect.bottom) as f32),
+								size: Vec2::new((((wall_rect.right+1)-wall_rect.left) * grid_size) as f32, (((wall_rect.top+1)-wall_rect.bottom) * grid_size) as f32),
 								layers: PhysicsLayer::WORLD,
 							})
 							//.insert(CollisionShape::Cuboid {
 							//.insert(PhysicMaterial {
 							.insert(Transform::from_xyz(
-								(wall_rect.left + wall_rect.right + 1) as f32 * grid_size as f32
-									/ 2.,
-								(wall_rect.bottom + wall_rect.top + 1) as f32 * grid_size as f32
-									/ 2.,
+								(wall_rect.left + wall_rect.right + 1) as f32 * grid_size as f32 / 2.,
+								(wall_rect.bottom + wall_rect.top + 1) as f32 * grid_size as f32 / 2.,
 								0.,
 							))
 							.insert(GlobalTransform::default());
