@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureSampleType;
 use bevy::render::texture::{ImageSampler, ImageSettings};
-use bevy_ecs_ldtk::prelude::*;
 use bevy_egui::{egui, EguiContext, EguiPlugin};
 
 mod components;
@@ -13,7 +12,6 @@ mod systems;
 
 const WINDOW_TITLE: &str = "Bevy Jam 2";
 const TITLE_SCREEN: &str = "title.png";
-const TILESET_RESOURCE: &str = "tileset.png";
 
 fn main() {
 	App::new()
@@ -49,7 +47,7 @@ fn main() {
 
 fn setup_system(
 		mut commands: Commands,
-		mut asset_server: ResMut<AssetServer>,
+		asset_server: ResMut<AssetServer>,
 ) {
 	// Camera
 	let mut camera = Camera2dBundle::default();

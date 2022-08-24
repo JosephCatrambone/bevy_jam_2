@@ -35,7 +35,7 @@ pub fn camera_follow_system(
 ) {
 	let mut player_transform: Vec3 = Vec3::splat(0.);
 	for (player_tf, _) in transforms.p1().iter() {
-		player_transform = player_tf.translation.clone();
+		player_transform = player_tf.translation; // Implements copy.
 	}
 
 	for (mut camera_tf, _) in transforms.p0().iter_mut() {

@@ -1,6 +1,4 @@
-use std::time::Duration;
 use bevy::prelude::*;
-use bevy::sprite::Rect;
 use bitflags::bitflags;
 
 #[derive(Eq, PartialEq)]

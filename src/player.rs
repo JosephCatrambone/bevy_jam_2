@@ -1,11 +1,8 @@
-use crate::resources;
-use crate::resources::*;
 use crate::components;
 use crate::components::*;
 use crate::level::ENTITY_Z;
 use bevy::prelude::*;
 use bevy::time::FixedTimestep;
-use rand::{Rng, thread_rng};
 use std::time::Duration;
 
 // Constants:
@@ -73,7 +70,7 @@ pub struct PlayerDeathEvent(Entity);
 
 fn player_startup_system(
 	mut commands: Commands,
-	mut asset_server: ResMut<AssetServer>,
+	asset_server: ResMut<AssetServer>,
 	mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
 	// Load player spritesheet.
@@ -92,7 +89,7 @@ fn player_respawn_system(
 	mut commands: Commands,
 	start: Res<PlayerRestartPosition>,
 	spritesheet: Res<PlayerSpriteSheet>,
-	mut player_query: Query<&mut Player>,
+	player_query: Query<&mut Player>,
 ) {
 	if let Some(_) = player_query.iter().next() {
 		return; // Nothing to do.
@@ -100,7 +97,7 @@ fn player_respawn_system(
 
 	// TODO: Wait on spritesheet to be loaded.
 
-	let mut ssb = SpriteSheetBundle {
+	let ssb = SpriteSheetBundle {
 		sprite: TextureAtlasSprite::new(0),
 		texture_atlas: spritesheet.spritesheet_handle.clone(),
 		transform: Transform {
@@ -128,14 +125,14 @@ fn player_respawn_system(
 		.insert(Player {
 			max_speed: PLAYER_SPEED,
 			attack_cooldown: Timer::new(Duration::from_millis(PLAYER_ATTACK_COOLDOWN_MS), false),
-			last_frame_timer: Timer::new(Duration::from_millis(100), true),
+			last_frame_timer: Timer::new(Duration::from_millis(PLAYER_ANIMATION_FRAME_TIME), true),
 			sprite_atlas_index: 0
 		});
 }
 
 fn broadcast_player_death(
 	mut ev_playerdeath: EventWriter<PlayerDeathEvent>,
-	mut query: Query<Entity, (With<Player>, With<Dead>)>,
+	query: Query<Entity, (With<Player>, With<Dead>)>,
 ) {
 	if let Ok(entity) = query.get_single() {
 		// Player is dead.  :'(
@@ -147,7 +144,7 @@ fn broadcast_player_death(
 fn player_animation_system(
 	time: Res<Time>,
 	mut query: Query<(&LastFacing, &Velocity, &mut TextureAtlasSprite, &mut Player)>,
-	mut knockback_query: Query<&Knockback, With<Player>>,
+	knockback_query: Query<&Knockback, With<Player>>,
 	dead_query: Query<&Dead, With<Player>>,
 ) {
 	let knockback_active = knockback_query.iter().count() > 0;
@@ -200,7 +197,7 @@ fn player_attack_system(
 	kb: Res<Input<KeyCode>>,
 	//game_textures: Res<GameTextures>,
 	mut player_query: Query<(&Transform, &LastFacing, &mut Player)>,
-	mut enemy_query: Query<(&Transform, &RigidBody, Entity), Without<Player>>,
+	enemy_query: Query<(&Transform, &RigidBody, Entity), Without<Player>>,
 ) {
 	if let Ok((player_tf, player_facing, mut player_state)) = player_query.get_single_mut() {
 		// Decrease the attack cooldown if it's set.
@@ -229,7 +226,7 @@ fn player_attack_system(
 			*/
 
 			// Go through all the enemies and if they're close, give them a push.
-			for (enemy_tf, enemy_rb, entity) in enemy_query.iter() {
+			for (enemy_tf, _, entity) in enemy_query.iter() {
 				let enemy_xy:Vec2 = Vec2::new(enemy_tf.translation.x, enemy_tf.translation.y);
 				let delta_position = player_xy - enemy_xy;
 				if delta_position.length_squared() > PLAYER_MAX_PUSH_DISTANCE_SQUARED {
@@ -250,6 +247,8 @@ fn player_attack_system(
 					impulse: player_forward,
 					duration: Timer::new(Duration::from_millis(PLAYER_PUSH_DURATION_MS), false)
 				});
+				// Also, reset the timer for animation.
+				player_state.last_frame_timer.set_elapsed(Duration::from_millis(0));
 			}
 		}
 	}

@@ -1,11 +1,8 @@
-use crate::resources;
-use crate::resources::*;
 use crate::components;
 use crate::components::*;
 use crate::level::ENTITY_Z;
 use bevy::prelude::*;
-use bevy::time::FixedTimestep;
-use rand::{Rng, thread_rng};
+use rand::{RngCore, thread_rng};
 use std::time::Duration;
 
 // Constants:
@@ -29,6 +26,7 @@ impl Plugin for SlimePlugin {
 	fn build(&self, app: &mut App) {
 		app.add_startup_system(slime_startup_system);
 		app.add_system(slime_animation_system);
+		app.add_system(slime_ai_system);
 		//app.add_system_to_stage("player_init", respawn_player);
 	}
 }
@@ -53,7 +51,7 @@ pub struct SlimeSpriteSheet {
 
 fn slime_startup_system(
 	mut commands: Commands,
-	mut asset_server: ResMut<AssetServer>,
+	asset_server: ResMut<AssetServer>,
 	mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
 	// Load player spritesheet.
@@ -72,7 +70,9 @@ pub fn spawn_slime(
 	commands: &mut Commands,
 	spritesheet: &Res<SlimeSpriteSheet>,
 	pos: Vec2,
+	tint: Color,
 ) {
+	let mut rng = thread_rng();
 	let mut ssb = SpriteSheetBundle {
 		sprite: TextureAtlasSprite::new(0),
 		texture_atlas: spritesheet.spritesheet_handle.clone(),
@@ -85,6 +85,10 @@ pub fn spawn_slime(
 		visibility: Default::default(),
 		computed_visibility: Default::default()
 	};
+	ssb.sprite.color = tint;
+
+	let mut anim_frame_timer = Timer::new(Duration::from_millis(ANIMATION_FRAME_TIME), true);
+	anim_frame_timer.set_elapsed(Duration::from_millis(rng.next_u64() % ANIMATION_FRAME_TIME));
 
 	commands
 		.spawn_bundle(ssb)
@@ -101,21 +105,27 @@ pub fn spawn_slime(
 		.insert(Slime {
 			max_speed: SPEED,
 			attack_cooldown: Timer::new(Duration::from_millis(ATTACK_COOLDOWN_MS), false),
-			last_frame_timer: Timer::new(Duration::from_millis(100), true),
+			last_frame_timer: anim_frame_timer,
 			sprite_atlas_index: 0
 		});
 }
 
+fn slime_ai_system(
+	time: Res<Time>,
+	mut query: Query<(&LastFacing, &Velocity, &mut Slime), Without<Dead>>,
+) {
+	for (_, _, mut slime) in query.iter_mut() {
+		slime.attack_cooldown.tick(time.delta());
+	}
+}
+
 fn slime_animation_system(
 	time: Res<Time>,
-	mut query: Query<(&LastFacing, &Velocity, &mut TextureAtlasSprite, &mut Slime)>,
-	mut knockback_query: Query<&Knockback, With<Slime>>,
-	dead_query: Query<&Dead, With<Slime>>,
+	mut query: Query<(&LastFacing, Option<&Dead>, Option<&Knockback>, &Velocity, &mut TextureAtlasSprite, &mut Slime)>,
 ) {
-	let knockback_active = knockback_query.iter().count() > 0;
-	let dead = dead_query.iter().count() > 0;
-
-	if let Ok((facing, velocity, mut texture_atlas_sprite, mut state)) = query.get_single_mut() {
+	for (facing, maybe_dead, maybe_hit, velocity, mut texture_atlas_sprite, mut state) in query.iter_mut() {
+		let hit = maybe_hit.is_some();
+		let dead = maybe_dead.is_some();
 		// Major index: State.  Minor index: direction.  Min index: frame num.
 
 		// Idle: 0  (*4 directions *4 frames per direction)
@@ -127,7 +137,7 @@ fn slime_animation_system(
 		let mut major_frame_offset = FRAMES_PER_ANIMATION*NUM_DIRECTIONS;
 		if dead {
 			major_frame_offset *= 4;
-		} else if knockback_active {
+		} else if hit {
 			major_frame_offset *= 3;
 		} else if !state.attack_cooldown.finished() {
 			major_frame_offset *= 2;

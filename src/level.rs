@@ -1,10 +1,9 @@
 use crate::components::Area2d;
 use crate::components::PhysicsLayer;
 use crate::components::StaticBody;
-use crate::player::{Player, PlayerRestartPosition};
-use crate::slime::{Slime, SlimeSpriteSheet, spawn_slime};
+use crate::player::{PlayerRestartPosition};
+use crate::slime::{SlimeSpriteSheet, spawn_slime};
 use bevy::prelude::*;
-use bevy::sprite::Rect;
 use bevy_ecs_ldtk::prelude::*;
 use hashbrown::HashMap;
 use hashbrown::HashSet;
@@ -47,10 +46,10 @@ impl Plugin for LevelPlugin {
 
 fn setup_system(
 	mut commands: Commands,
-	mut asset_server: ResMut<AssetServer>,
+	asset_server: ResMut<AssetServer>,
 ) {
 	// Load the map.
-	let mut ldtk_world_map = LdtkWorldBundle {
+	let ldtk_world_map = LdtkWorldBundle {
 		ldtk_handle: asset_server.load("maps.ldtk"),
 		..Default::default()
 	};
@@ -148,6 +147,7 @@ pub fn process_spawned_level_layers(
 		match layer.identifier.as_ref() {
 			OVERLAY_DECORATION_NAME => transform.translation.z = OVERLAY_DECORATION_Z,
 			OBJECT_DECORATION_NAME => transform.translation.z = OBJECT_DECORATION_Z,
+			ENTITY_NAME => transform.translation.z = ENTITY_Z,
 			OBJECT_TOP_NAME => transform.translation.z = OBJECT_TOP_Z,
 			OBJECT_NAME => transform.translation.z = OBJECT_Z,
 			GROUND_DECORATION_NAME => transform.translation.z = GROUND_DECORATION_Z,
@@ -190,10 +190,25 @@ pub fn process_spawned_level_entity(
 			player_start.position.y = transform.translation.y;
 		}
 		else if entity_instance.identifier == *"SLIME_SPAWN" {
+			let color = if let Some(color_field) = entity_instance
+				.field_instances
+				.iter()
+				.find(|f| f.identifier == *"Color" || f.identifier == *"Tint")
+			{
+				if let FieldValue::Color(color) = color_field.value {
+					color
+				} else {
+					Color::rgb(1.0, 1.0, 1.0)
+				}
+			} else {
+				Color::rgb(1.0, 1.0, 1.0)
+			};
+
 			spawn_slime(
 				&mut commands,
 				&slime_sprite_sheet,
-				Vec2::new(transform.translation.x, transform.translation.y)
+				Vec2::new(transform.translation.x, transform.translation.y),
+				color
 			);
 		}
 		else if entity_instance.identifier == *"MyEntityIdentifier" {
