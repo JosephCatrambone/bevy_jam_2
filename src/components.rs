@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::sprite::Rect;
 use bitflags::bitflags;
 
+#[derive(Eq, PartialEq)]
 pub enum Direction {
 	None,
 	Right,
@@ -37,13 +38,25 @@ pub struct Velocity {
 }
 
 impl Velocity {
+	/// direction is None when dx and dy are zero.
 	pub fn direction(&self) -> Direction {
-		match (self.dx.signum(), self.dy.signum()) {
-			(1.0, _) => Direction::Right,
-			(-1.0, _) => Direction::Left,
-			(0.0, 1.0) => Direction::Up,
-			(0.0, -1.0) => Direction::Down,
-			_ => Direction::None,
+		let moving = self.dx.abs() > 0.01 || self.dy.abs() > 0.01;
+		if !moving {
+			return Direction::None;
+		}
+		let horizontal = self.dx.abs() > self.dy.abs();
+		if horizontal {
+			if self.dx > 0. {
+				Direction::Right
+			} else {
+				Direction::Left
+			}
+		} else {
+			if self.dy > 0. {
+				Direction::Up
+			} else {
+				Direction::Down
+			}
 		}
 	}
 }
@@ -59,6 +72,7 @@ pub struct Area2d {
 #[derive(Clone, Component, Debug, Default)]
 pub struct RigidBody {
 	pub mass: f32,
+	pub drag: f32,
 	pub size: Vec2,
 	pub layers: PhysicsLayer,
 }

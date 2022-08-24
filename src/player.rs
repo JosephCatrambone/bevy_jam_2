@@ -13,8 +13,14 @@ use std::time::Duration;
 const PLAYER_SPRITESHEET: &str = "player.png";
 const PLAYER_RENDER_PRIORITY: f32 = ENTITY_Z;
 const PLAYER_SIZE: f32 = 14.0;
-const PLAYER_SPEED: f32 = 30.0;
+const PLAYER_SPEED: f32 = 40.0;
+const PLAYER_PUSH_DURATION_MS: u64 = 800;
 const PLAYER_ATTACK_COOLDOWN_MS: u64 = 100;
+const PLAYER_ANIMATION_FRAME_TIME: u64 = 200;
+const ANIM_TILE_SIZE: f32 = 16.0;
+const PLAYER_NUM_DIRECTIONS: usize = 4;
+const PLAYER_FRAMES_PER_ANIMATION: usize = 4;
+const PLAYER_NUM_ANIMATION_STATES: usize = 5;
 
 // Plugin/Setup:
 
@@ -30,6 +36,7 @@ impl Plugin for PlayerPlugin {
 		app.add_system(player_attack_system);
 		app.add_system(check_for_player_death);
 		app.add_system(player_keyboard_event_system);
+		app.add_system(player_animation_system);
 		//app.add_system_to_stage("player_init", respawn_player);
 	}
 }
@@ -41,6 +48,8 @@ pub struct Player {
 	pub max_speed: f32,
 	pub dead: bool,
 	pub attack_cooldown: Timer,
+
+	pub last_frame_timer: Timer,
 	pub sprite_atlas_index: usize,
 }
 
@@ -69,7 +78,7 @@ fn player_startup_system(
 ) {
 	// Load player spritesheet.
 	let player_spritesheet_handle = asset_server.load(PLAYER_SPRITESHEET);
-	let player_spritesheet_atlas = TextureAtlas::from_grid(player_spritesheet_handle, Vec2::new(16.0, 16.0), 2, 4);
+	let player_spritesheet_atlas = TextureAtlas::from_grid(player_spritesheet_handle, Vec2::splat(ANIM_TILE_SIZE), PLAYER_FRAMES_PER_ANIMATION, PLAYER_NUM_ANIMATION_STATES*PLAYER_NUM_DIRECTIONS);
 	let player_spritesheet = texture_atlases.add(player_spritesheet_atlas);
 
 	commands.insert_resource(PlayerSpriteSheet {
@@ -108,8 +117,10 @@ fn player_respawn_system(
 		.spawn_bundle(ssb)
 		.insert(Health { max: 3, current: 3 })
 		.insert(Velocity { dx: 0.0, dy: 0.0 })
+		.insert(LastFacing(components::Direction::Down))
 		.insert(RigidBody {
 			mass: 1.0,
+			drag: 0.0,
 			size: Vec2::splat(PLAYER_SIZE),
 			layers: PhysicsLayer::ACTOR,
 		})
@@ -117,6 +128,7 @@ fn player_respawn_system(
 			max_speed: PLAYER_SPEED,
 			dead: false,
 			attack_cooldown: Timer::new(Duration::from_millis(PLAYER_ATTACK_COOLDOWN_MS), false),
+			last_frame_timer: Timer::new(Duration::from_millis(100), true),
 			sprite_atlas_index: 0
 		});
 }
@@ -139,9 +151,51 @@ fn check_for_player_death(
 }
 
 fn player_animation_system(
-	mut query: Query<(&mut TextureAtlasSprite, &mut Player)>,
+	time: Res<Time>,
+	mut query: Query<(&LastFacing, &Velocity, &mut TextureAtlasSprite, &mut Player)>,
+	mut knockback_query: Query<&Knockback, With<Player>>,
 ) {
+	let knockback_active = knockback_query.iter().count() > 0;
 
+	if let Ok((facing, velocity, mut texture_atlas_sprite, mut player_state)) = query.get_single_mut() {
+		// Major index: State.  Minor index: direction.  Min index: frame num.
+
+		// Idle: 0  (*4 directions *4 frames per direction)
+		// Walk: 1
+		// Push: 2
+		// Hit: 3
+		// Dead: 4
+
+		let mut major_frame_offset = PLAYER_FRAMES_PER_ANIMATION*PLAYER_NUM_DIRECTIONS;
+		if player_state.dead {
+			major_frame_offset *= 4;
+		} else if knockback_active {
+			major_frame_offset *= 3;
+		} else if !player_state.attack_cooldown.finished() {
+			major_frame_offset *= 2;
+		} else if velocity.direction() != components::Direction::None {
+			// Player is moving.  Use this or the last facing direction.
+			major_frame_offset *= 1;
+		} else {
+			major_frame_offset = 0;
+		}
+		let direction_frame_offset = PLAYER_FRAMES_PER_ANIMATION * match facing.0 {
+			components::Direction::Right => 0,
+			components::Direction::Up => 1,
+			components::Direction::Left => 2,
+			components::Direction::Down => 3,
+			_ => 0,
+		};
+		let mut frame_step = texture_atlas_sprite.index % PLAYER_FRAMES_PER_ANIMATION;
+
+		player_state.last_frame_timer.tick(time.delta());
+		if player_state.last_frame_timer.just_finished() {
+			frame_step = (frame_step + 1)%PLAYER_FRAMES_PER_ANIMATION;
+		}
+
+		// Set our current frame based on this.
+		texture_atlas_sprite.index = major_frame_offset + direction_frame_offset + frame_step;
+	}
 }
 
 fn player_attack_system(
@@ -149,21 +203,22 @@ fn player_attack_system(
 	time: Res<Time>,
 	kb: Res<Input<KeyCode>>,
 	//game_textures: Res<GameTextures>,
-	mut query: Query<(&Transform, &mut Player)>,
+	mut player_query: Query<(&Transform, &mut Player)>,
+	mut enemy_query: Query<(&Transform, &RigidBody, Entity), Without<Player>>,
 ) {
-	if let Ok((player_tf, mut player_state)) = query.get_single_mut() {
+	if let Ok((player_tf, mut player_state)) = player_query.get_single_mut() {
 		// Decrease the attack cooldown if it's set.
 		player_state.attack_cooldown.tick(time.delta());
 
 		// Open question: do we want to push in the direction we last moved or allow full control?
 
 		if kb.just_pressed(KeyCode::Space) && player_state.attack_cooldown.finished() {
-			println!("Push!");
 			player_state.attack_cooldown.reset();
-			let (x, y) = (player_tf.translation.x, player_tf.translation.y);
+			//let (x, y) = (player_tf.translation.x, player_tf.translation.y);
 
 			//let mut spawn_attack = |: f32| {
 			// Spawn a push effect _immediately_ for kickback.
+			/*
 			commands
 				.spawn_bundle(SpriteBundle {
 					transform: Transform::from_xyz(x, y, PLAYER_RENDER_PRIORITY),
@@ -174,6 +229,16 @@ fn player_attack_system(
 				//.insert(SpriteSize::from(PLAYER_LASER_SIZE))
 				//.insert(Movable { auto_despawn: true })
 				.insert(Velocity { dx: 0., dy: 1. });
+			*/
+
+			// Go through all the enemies and if they're close, give them a push.
+			for (enemy_tf, enemy_rb, entity) in enemy_query.iter() {
+				// If nearby...
+				commands.entity(entity).insert(Knockback {
+					impulse: Vec2::new(0.0, 0.0),
+					duration: Duration::from_millis(PLAYER_PUSH_DURATION_MS),
+				});
+			}
 		}
 	}
 }
@@ -199,12 +264,4 @@ fn player_keyboard_event_system(
 			velocity.dy -= player_state.max_speed;
 		}
 	}
-}
-
-fn make_push_area(
-	mut commands: Commands,
-	direction: Vec2,
-
-) {
-
 }
