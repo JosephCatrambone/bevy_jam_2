@@ -94,5 +94,5 @@ pub struct StaticBody {
 #[derive(Clone, Component, Debug)]
 pub struct Knockback {
 	pub impulse: Vec2, // force = mass * acceleration.  impulse = mass * delta velocity = f_avg * delta t
-	pub duration: Duration,
+	pub duration: Timer,
 }

@@ -248,7 +248,7 @@ fn player_attack_system(
 				// We are close enough and facing enemies.
 				commands.entity(entity).insert(Knockback {
 					impulse: player_forward,
-					duration: Duration::from_millis(PLAYER_PUSH_DURATION_MS),
+					duration: Timer::new(Duration::from_millis(PLAYER_PUSH_DURATION_MS), false)
 				});
 			}
 		}

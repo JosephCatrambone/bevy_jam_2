@@ -53,10 +53,22 @@ pub fn camera_follow_system(
 }
 
 pub fn knockback_system(
+	mut commands: Commands,
 	time: Res<Time>,
-	mut query: Query<(&mut Transform, &mut Knockback, &mut RigidBody)>,
+	mut query: Query<(&mut Transform, &mut Knockback, &RigidBody, Entity)>,
 ) {
+	for (mut tf, mut knockback, rigidbody, entity) in query.iter_mut() {
+		// First, update the knockback duration.  Perhaps remove it if expired.
+		knockback.duration.tick(time.delta());
+		if knockback.duration.finished() {
+			commands.entity(entity).remove::<Knockback>();
+			continue;
+		}
 
+		// Otherwise apply the impulse effects.  Maybe negate velocity?
+		tf.translation.x += knockback.impulse.x / (1.0 + rigidbody.mass);
+		tf.translation.y += knockback.impulse.y / (1.0 + rigidbody.mass);
+	}
 }
 
 pub fn check_for_death(
@@ -105,8 +117,17 @@ pub fn dynamic_dynamic_collision_system(
 	mut query: Query<(&mut Transform, &RigidBody)>,
 ) {
 	let mut combinations = query.iter_combinations_mut();
-	while let Some([mut a, mut b]) = combinations.fetch_next() {
-
+	while let Some([(mut a_tf, a_rb), (mut b_tf, b_rb)]) = combinations.fetch_next() {
+		if let Some(force) = minimum_separating_axis(&a_tf.translation.xy(), &a_rb.size, &b_tf.translation.xy(), &b_rb.size) {
+			// Apply proportionally to a's mass and b's mass.
+			let mass_sum = a_rb.mass + b_rb.mass;
+			let a_ratio = a_rb.mass / mass_sum;
+			let b_ratio = b_rb.mass / mass_sum;
+			a_tf.translation.x -= force.x*a_ratio;
+			a_tf.translation.y -= force.y*a_ratio;
+			b_tf.translation.x += force.x*b_ratio;
+			b_tf.translation.y += force.y*b_ratio;
+		}
 	}
 }
 
