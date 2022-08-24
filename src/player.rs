@@ -14,6 +14,7 @@ const PLAYER_SPRITESHEET: &str = "player.png";
 const PLAYER_RENDER_PRIORITY: f32 = ENTITY_Z;
 const PLAYER_SIZE: f32 = 14.0;
 const PLAYER_SPEED: f32 = 40.0;
+const PLAYER_MAX_PUSH_DISTANCE_SQUARED: f32 = 15.0f32 * 15.0f32;
 const PLAYER_PUSH_DURATION_MS: u64 = 800;
 const PLAYER_ATTACK_COOLDOWN_MS: u64 = 100;
 const PLAYER_ANIMATION_FRAME_TIME: u64 = 200;
@@ -34,7 +35,7 @@ impl Plugin for PlayerPlugin {
 		// DEBUG: Player spawn after 1 sec.  In future, this is handled differently.
 		app.add_system_set(SystemSet::new().with_run_criteria(FixedTimestep::step(1.0)).with_system(player_respawn_system),);
 		app.add_system(player_attack_system);
-		app.add_system(check_for_player_death);
+		app.add_system(broadcast_player_death);
 		app.add_system(player_keyboard_event_system);
 		app.add_system(player_animation_system);
 		//app.add_system_to_stage("player_init", respawn_player);
@@ -46,7 +47,6 @@ impl Plugin for PlayerPlugin {
 #[derive(Component)]
 pub struct Player {
 	pub max_speed: f32,
-	pub dead: bool,
 	pub attack_cooldown: Timer,
 
 	pub last_frame_timer: Timer,
@@ -118,6 +118,7 @@ fn player_respawn_system(
 		.insert(Health { max: 3, current: 3 })
 		.insert(Velocity { dx: 0.0, dy: 0.0 })
 		.insert(LastFacing(components::Direction::Down))
+		.insert(YSort { base_layer: PLAYER_RENDER_PRIORITY })
 		.insert(RigidBody {
 			mass: 1.0,
 			drag: 0.0,
@@ -126,27 +127,20 @@ fn player_respawn_system(
 		})
 		.insert(Player {
 			max_speed: PLAYER_SPEED,
-			dead: false,
 			attack_cooldown: Timer::new(Duration::from_millis(PLAYER_ATTACK_COOLDOWN_MS), false),
 			last_frame_timer: Timer::new(Duration::from_millis(100), true),
 			sprite_atlas_index: 0
 		});
 }
 
-fn check_for_player_death(
-	//mut commands: Commands,
+fn broadcast_player_death(
 	mut ev_playerdeath: EventWriter<PlayerDeathEvent>,
-	mut query: Query<(Entity, &Health, &mut Player)>,
+	mut query: Query<Entity, (With<Player>, With<Dead>)>,
 ) {
-	//let (entity, player_health, _) = query.single();
-	//let (entity, player_health, _) = query.single_mut();
-	for (entity, player_health, mut player_state) in query.iter_mut() {
-		if player_health.current <= 0 {
-			// Player is dead.  :'(
-			//commands.entity(entity).despawn();
-			ev_playerdeath.send(PlayerDeathEvent(entity));
-			player_state.dead = true;
-		}
+	if let Ok(entity) = query.get_single() {
+		// Player is dead.  :'(
+		ev_playerdeath.send(PlayerDeathEvent(entity));
+		//commands.entity(entity).despawn();
 	}
 }
 
@@ -154,8 +148,10 @@ fn player_animation_system(
 	time: Res<Time>,
 	mut query: Query<(&LastFacing, &Velocity, &mut TextureAtlasSprite, &mut Player)>,
 	mut knockback_query: Query<&Knockback, With<Player>>,
+	dead_query: Query<&Dead, With<Player>>,
 ) {
 	let knockback_active = knockback_query.iter().count() > 0;
+	let dead = dead_query.iter().count() > 0;
 
 	if let Ok((facing, velocity, mut texture_atlas_sprite, mut player_state)) = query.get_single_mut() {
 		// Major index: State.  Minor index: direction.  Min index: frame num.
@@ -167,7 +163,7 @@ fn player_animation_system(
 		// Dead: 4
 
 		let mut major_frame_offset = PLAYER_FRAMES_PER_ANIMATION*PLAYER_NUM_DIRECTIONS;
-		if player_state.dead {
+		if dead {
 			major_frame_offset *= 4;
 		} else if knockback_active {
 			major_frame_offset *= 3;
@@ -203,16 +199,17 @@ fn player_attack_system(
 	time: Res<Time>,
 	kb: Res<Input<KeyCode>>,
 	//game_textures: Res<GameTextures>,
-	mut player_query: Query<(&Transform, &mut Player)>,
+	mut player_query: Query<(&Transform, &LastFacing, &mut Player)>,
 	mut enemy_query: Query<(&Transform, &RigidBody, Entity), Without<Player>>,
 ) {
-	if let Ok((player_tf, mut player_state)) = player_query.get_single_mut() {
+	if let Ok((player_tf, player_facing, mut player_state)) = player_query.get_single_mut() {
 		// Decrease the attack cooldown if it's set.
 		player_state.attack_cooldown.tick(time.delta());
 
 		// Open question: do we want to push in the direction we last moved or allow full control?
 
 		if kb.just_pressed(KeyCode::Space) && player_state.attack_cooldown.finished() {
+			let player_xy:Vec2 = Vec2::new(player_tf.translation.x, player_tf.translation.y);
 			player_state.attack_cooldown.reset();
 			//let (x, y) = (player_tf.translation.x, player_tf.translation.y);
 
@@ -233,9 +230,24 @@ fn player_attack_system(
 
 			// Go through all the enemies and if they're close, give them a push.
 			for (enemy_tf, enemy_rb, entity) in enemy_query.iter() {
-				// If nearby...
+				let enemy_xy:Vec2 = Vec2::new(enemy_tf.translation.x, enemy_tf.translation.y);
+				let delta_position = player_xy - enemy_xy;
+				if delta_position.length_squared() > PLAYER_MAX_PUSH_DISTANCE_SQUARED {
+					continue;
+				}
+				let player_forward = match player_facing.0 {
+					components::Direction::Right => Vec2::new(1.0, 0.0),
+					components::Direction::Up => Vec2::new(0.0, 1.0),
+					components::Direction::Left => Vec2::new(-1.0, 0.0),
+					_ => Vec2::new(0.0, -1.0),
+				};
+				// If the dot product of the player_forward and the difference in positions is negative, the player is facing the enemy.
+				if player_forward.dot(delta_position) >= 0.0f32 {
+					continue;
+				}
+				// We are close enough and facing enemies.
 				commands.entity(entity).insert(Knockback {
-					impulse: Vec2::new(0.0, 0.0),
+					impulse: player_forward,
 					duration: Duration::from_millis(PLAYER_PUSH_DURATION_MS),
 				});
 			}

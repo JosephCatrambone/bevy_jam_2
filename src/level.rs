@@ -2,6 +2,7 @@ use crate::components::Area2d;
 use crate::components::PhysicsLayer;
 use crate::components::StaticBody;
 use crate::player::{Player, PlayerRestartPosition};
+use crate::slime::{Slime, SlimeSpriteSheet, spawn_slime};
 use bevy::prelude::*;
 use bevy::sprite::Rect;
 use bevy_ecs_ldtk::prelude::*;
@@ -177,6 +178,7 @@ pub struct WallBundle {
 // Better to use the .register_ldtk_entity::<resources::LevelDoor>("Door") method, but this is an option.
 pub fn process_spawned_level_entity(
 	mut commands: Commands,
+	slime_sprite_sheet: Res<SlimeSpriteSheet>,
 	mut player_start: ResMut<PlayerRestartPosition>,
 	entity_query: Query<(Entity, &Transform, &EntityInstance), Added<EntityInstance>>,
 	mut texture_atlases: ResMut<Assets<TextureAtlas>>,
@@ -186,6 +188,13 @@ pub fn process_spawned_level_entity(
 		if entity_instance.identifier == *"PLAYER_SPAWN" {
 			player_start.position.x = transform.translation.x;
 			player_start.position.y = transform.translation.y;
+		}
+		else if entity_instance.identifier == *"SLIME_SPAWN" {
+			spawn_slime(
+				&mut commands,
+				&slime_sprite_sheet,
+				Vec2::new(transform.translation.x, transform.translation.y)
+			);
 		}
 		else if entity_instance.identifier == *"MyEntityIdentifier" {
 			let tileset = asset_server.load("atlas/MV Icons Complete Sheet Free - ALL.png");

@@ -29,6 +29,9 @@ pub struct Health {
 }
 
 #[derive(Component)]
+pub struct Dead;
+
+#[derive(Component)]
 pub struct LastFacing(pub Direction);
 
 #[derive(Clone, Component)]
@@ -59,6 +62,11 @@ impl Velocity {
 			}
 		}
 	}
+}
+
+#[derive(Component)]
+pub struct YSort {
+	pub base_layer: f32,
 }
 
 // Transforms for these are separate.

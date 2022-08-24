@@ -18,6 +18,14 @@ pub fn movement_system(
 	}
 }
 
+pub fn y_sort_sprites_system(
+	mut query: Query<(&mut Transform, &YSort)>,
+) {
+	for (mut tf, ysort) in query.iter_mut() {
+		tf.translation.z = ysort.base_layer - (1.0f32 / (1.0f32 + (2.0f32.powf(-0.01*tf.translation.y))));
+	}
+}
+
 pub fn camera_follow_system(
 	//mut query: Query<(&mut Transform, With<Camera2d>)>,
 	mut transforms: ParamSet<(
@@ -49,6 +57,20 @@ pub fn knockback_system(
 	mut query: Query<(&mut Transform, &mut Knockback, &mut RigidBody)>,
 ) {
 
+}
+
+pub fn check_for_death(
+	mut commands: Commands,
+	mut query: Query<(Entity, &Health), Without<Dead>>,
+) {
+	//let (entity, player_health, _) = query.single();
+	//let (entity, player_health, _) = query.single_mut();
+	for (entity, health) in query.iter_mut() {
+		if health.current <= 0 {
+			//commands.entity(entity).despawn();
+			commands.entity(entity).insert(components::Dead);
+		}
+	}
 }
 
 pub fn update_last_facing(

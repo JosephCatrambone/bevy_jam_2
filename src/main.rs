@@ -8,6 +8,7 @@ mod components;
 mod level;
 mod player;
 mod resources;
+mod slime;
 mod systems;
 
 const WINDOW_TITLE: &str = "Bevy Jam 2";
@@ -31,15 +32,18 @@ fn main() {
 		.add_startup_system(setup_system)
 		// Systems that create Egui widgets should be run during the `CoreStage::Update` stage,
 		// or after the `EguiSystem::BeginFrame` system (which belongs to the `CoreStage::PreUpdate` stage).
-		.add_system(ui_example)
+		.add_system(debug_ui)
 		.add_system(systems::movement_system)
-		.add_system(systems::update_last_facing)
 		.add_system(systems::camera_follow_system)
+		.add_system(systems::y_sort_sprites_system)
+		.add_system(systems::update_last_facing)
+		.add_system(systems::knockback_system)
+		.add_system(systems::check_for_death)
 		.add_system(systems::static_dynamic_collision_system)
 		.add_system(systems::dynamic_dynamic_collision_system)
-		.add_system(systems::knockback_system)
-		.add_plugin(level::LevelPlugin)
 		.add_plugin(player::PlayerPlugin)
+		.add_plugin(slime::SlimePlugin)
+		.add_plugin(level::LevelPlugin)
 		.run();
 }
 
@@ -71,5 +75,16 @@ fn ui_example(
 ) {
 	egui::Window::new("Debug").show(egui_context.ctx_mut(), |ui| {
 		ui.label("world");
+	});
+}
+
+fn debug_ui(
+	mut egui_context: ResMut<EguiContext>,
+	query: Query<&Transform, With<player::Player>>,
+) {
+	egui::Window::new("Debug").show(egui_context.ctx_mut(), |ui| {
+		if let Ok(tf) = query.get_single() {
+			ui.label(format!("Player tf: {}, {}, {}", tf.translation.x, tf.translation.y, tf.translation.z));
+		}
 	});
 }
