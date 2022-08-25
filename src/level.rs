@@ -1,9 +1,11 @@
 use crate::components::Area2d;
 use crate::components::PhysicsLayer;
+use crate::components::RigidBody;
 use crate::components::StaticBody;
-use crate::player::{PlayerRestartPosition};
+use crate::player::{Player, PlayerRestartPosition};
 use crate::slime::{SlimeSpriteSheet, spawn_slime};
 use bevy::prelude::*;
+use bevy_ecs_ldtk::ldtk::FieldInstanceEntityReference;
 use bevy_ecs_ldtk::prelude::*;
 use hashbrown::HashMap;
 use hashbrown::HashSet;
@@ -58,18 +60,15 @@ fn setup_system(
 
 // Region -- Level Door Handling
 
-#[derive(Component, Clone, Default)]
-pub struct DestinationLevelName(String);
+#[derive(Clone, Component)]
+struct DoorDestination(FieldInstanceEntityReference);
 
-#[derive(Component, Clone, Default)]
-pub struct DestinationTile((u32, u32));
-
-#[derive(Bundle, Clone, Default)] // Can't auto derive LdtkEntity.
+#[derive(Bundle, Clone)] // Can't auto derive LdtkEntity.
 pub struct LevelDoor {
 	transform: Transform, // We use only the translation, but this is important for consistency.
-	destination_map: DestinationLevelName,
-	destination_tile: DestinationTile,
 	trigger_volume: Area2d,
+	destination: DoorDestination,
+
 	//#[sprite_sheet_bundle]
 	//#[bundle]
 	//sprite_bundle: SpriteSheetBundle,
@@ -93,18 +92,27 @@ impl LdtkEntity for LevelDoor {
 			);
 		}
 
-		let mut sprite = Sprite {
-			custom_size: Some(Vec2::splat(16.)),
-			..Default::default()
-		};
-		if let Some(color_field) = entity_instance
+		let mut destination_entity_ref:Option<FieldInstanceEntityReference> = None;
+		// Extract "destination_name" from the fields:
+		// It would be nice if we could have all of the named_locations in advance, but...
+		if let Some(destination_field) = entity_instance
 			.field_instances
 			.iter()
-			.find(|f| f.identifier == *"Color")
+			.find(|f| f.identifier == *"destination")
 		{
-			if let FieldValue::Color(color) = color_field.value {
-				sprite.color = color;
+			if let FieldValue::EntityRef(dest_ref) = &destination_field.value {
+				destination_entity_ref = dest_ref.clone();
+				//if let Some(field_instance_entity_ref) = dest_ref {
+					//destination_name = dest_name.unwrap().to_string();
+					//world_iid = field_instance_entity_ref.world_iid.clone();
+					//level_iid = field_instance_entity_ref.level_iid.clone();
+					//entity_iid = field_instance_entity_ref.entity_iid.clone();
+				//}
 			}
+		}
+
+		if destination_entity_ref.is_none() {
+			eprintln!("Level sanity check failed.  Missing reference in {}", &entity_instance.identifier);
 		}
 
 		let origin:Vec2 = Vec2::new(entity_instance.px.x as f32, entity_instance.px.y as f32);
@@ -115,24 +123,17 @@ impl LdtkEntity for LevelDoor {
 				size: Vec2::new(entity_instance.width as f32, entity_instance.height as f32),
 				layers: PhysicsLayer::WORLD,
 			},
-			destination_map: DestinationLevelName("".to_string()),
-			destination_tile: DestinationTile((0, 0))
+			destination: DoorDestination(destination_entity_ref.unwrap())
 		}
 	}
 }
 
-fn explain_field(value: &FieldValue) -> String {
-	match value {
-		FieldValue::Int(Some(i)) => format!("has an integer of {}", i),
-		FieldValue::Float(Some(f)) => format!("has a float of {}", f),
-		FieldValue::Bool(b) => format!("is {}", b),
-		FieldValue::String(Some(s)) => format!("says {}", s),
-		FieldValue::Color(c) => format!("has the color {:?}", c),
-		FieldValue::Enum(Some(e)) => format!("is the variant {}", e),
-		FieldValue::FilePath(Some(f)) => format!("references {}", f),
-		FieldValue::Point(Some(p)) => format!("is at ({}, {})", p.x, p.y),
-		a => format!("is hard to explain: {:?}", a),
-	}
+fn level_door_interaction_system(
+	mut level_sets: Query<&mut LevelSet>,
+	door_query: Query<(&DoorDestination, &Area2d)>,
+	mut player_query: Query<(&mut Transform, &RigidBody), With<Player>>,
+) {
+
 }
 
 // Region -- Level Door Handling
@@ -193,7 +194,7 @@ pub fn process_spawned_level_entity(
 			let color = if let Some(color_field) = entity_instance
 				.field_instances
 				.iter()
-				.find(|f| f.identifier == *"Color" || f.identifier == *"Tint")
+				.find(|f| f.identifier == *"color")
 			{
 				if let FieldValue::Color(color) = color_field.value {
 					color
@@ -211,29 +212,9 @@ pub fn process_spawned_level_entity(
 				color
 			);
 		}
-		else if entity_instance.identifier == *"MyEntityIdentifier" {
-			let tileset = asset_server.load("atlas/MV Icons Complete Sheet Free - ALL.png");
+		else if entity_instance.identifier == *"NAMED_LOCATION" {
+			//if let Some(tile) = &entity_instance.tile { tile.w, tile.h, tile.x, tile.y }
 
-			if let Some(tile) = &entity_instance.tile {
-				let texture_atlas = texture_atlases.add(TextureAtlas::from_grid(
-					tileset.clone(),
-					Vec2::new(tile.w as f32, tile.h as f32),
-					16,
-					95,
-				));
-
-				let sprite = TextureAtlasSprite {
-					index: (tile.y / tile.h) as usize * 16 + (tile.x / tile.w) as usize,
-					..Default::default()
-				};
-
-				commands.entity(entity).insert_bundle(SpriteSheetBundle {
-					texture_atlas,
-					sprite,
-					transform: *transform,
-					..Default::default()
-				});
-			}
 		}
 	}
 }
@@ -407,5 +388,19 @@ pub fn make_collision_object_system(
 				});
 			}
 		});
+	}
+}
+
+fn explain_field(value: &FieldValue) -> String {
+	match value {
+		FieldValue::Int(Some(i)) => format!("has an integer of {}", i),
+		FieldValue::Float(Some(f)) => format!("has a float of {}", f),
+		FieldValue::Bool(b) => format!("is {}", b),
+		FieldValue::String(Some(s)) => format!("says {}", s),
+		FieldValue::Color(c) => format!("has the color {:?}", c),
+		FieldValue::Enum(Some(e)) => format!("is the variant {}", e),
+		FieldValue::FilePath(Some(f)) => format!("references {}", f),
+		FieldValue::Point(Some(p)) => format!("is at ({}, {})", p.x, p.y),
+		a => format!("is hard to explain: {:?}", a),
 	}
 }
