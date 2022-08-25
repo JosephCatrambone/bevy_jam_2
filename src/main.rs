@@ -3,6 +3,9 @@ use bevy::render::render_resource::TextureSampleType;
 use bevy::render::texture::{ImageSampler, ImageSettings};
 use bevy_egui::{egui, EguiContext, EguiPlugin};
 
+// If debug:
+//use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
+
 mod components;
 mod level;
 mod player;
@@ -26,6 +29,8 @@ fn main() {
 		})
 		.insert_resource(resources::GamePauseMode::default())
 		.add_plugins(DefaultPlugins)
+		//.add_plugin(LogDiagnosticsPlugin::default())
+		//.add_plugin(FrameTimeDiagnosticsPlugin::default())
 		.add_plugin(EguiPlugin)
 		.add_startup_system(setup_system)
 		// Systems that create Egui widgets should be run during the `CoreStage::Update` stage,

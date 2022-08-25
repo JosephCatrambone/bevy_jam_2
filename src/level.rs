@@ -105,14 +105,7 @@ impl LdtkEntity for LevelDoor {
 		_: &AssetServer,
 		_: &mut Assets<TextureAtlas>,
 	) -> LevelDoor {
-		println!("EntityWithFields added, here are some facts:");
-		for field_instance in &entity_instance.field_instances {
-			println!(
-				"    its {} {}",
-				field_instance.identifier,
-				explain_field(&field_instance.value)
-			);
-		}
+		// Despite not being explicitly added as children, doors seem to get cleaned up after level changes.
 
 		let mut destination_entity_ref:Option<FieldInstanceEntityReference> = None;
 		// Extract "destination_name" from the fields:
@@ -124,12 +117,6 @@ impl LdtkEntity for LevelDoor {
 		{
 			if let FieldValue::EntityRef(dest_ref) = &destination_field.value {
 				destination_entity_ref = dest_ref.clone();
-				//if let Some(field_instance_entity_ref) = dest_ref {
-					//destination_name = dest_name.unwrap().to_string();
-					//world_iid = field_instance_entity_ref.world_iid.clone();
-					//level_iid = field_instance_entity_ref.level_iid.clone();
-					//entity_iid = field_instance_entity_ref.entity_iid.clone();
-				//}
 			}
 		}
 
@@ -145,7 +132,7 @@ impl LdtkEntity for LevelDoor {
 				size: Vec2::new(entity_instance.width as f32, entity_instance.height as f32),
 				layers: PhysicsLayer::WORLD,
 			},
-			destination: DoorDestination(destination_entity_ref.unwrap())
+			destination: DoorDestination(destination_entity_ref.expect("Map invariant violated: destination is null."))
 		}
 	}
 }
@@ -320,7 +307,7 @@ fn process_spawned_level_entity_system(
 
 	// Set all of the spawned entities as children of the current map.
 	//let level = levels.get(level_handle).expect("Level should be loaded by this point");
-	if let Ok((level_entity, level_handle)) = level_query.get_single() {
+	if let Ok((level_entity, _level_handle)) = level_query.get_single() {
 		//commands.entity(level_entity).with_children(|level| { level.spawn(); });
 		commands.entity(level_entity).push_children(&spawned_entities);
 	};

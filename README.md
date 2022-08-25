@@ -42,4 +42,3 @@ A public repository for the second Bevy Game Jam!
 - PLAYER_SPAWN
 - SLIME_SPAWN (FieldIdentifier "color" - Tints Slime)
 - DOOR (FieldIdentifier "destination" -- The matching "target".)
-- NAMED_LOCATION (FieldIdentifier "name" -- What is this called?)
