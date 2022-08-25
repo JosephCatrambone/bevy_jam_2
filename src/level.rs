@@ -1,15 +1,22 @@
+use std::time::Duration;
 use crate::components::Area2d;
+use crate::components::FadeOverlay;
 use crate::components::PhysicsLayer;
 use crate::components::RigidBody;
 use crate::components::StaticBody;
 use crate::player::{Player, PlayerRestartPosition};
+use crate::resources::LevelTransition;
 use crate::slime::{SlimeSpriteSheet, spawn_slime};
+use crate::systems::minimum_separating_axis;
+use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::ldtk::FieldInstanceEntityReference;
 use bevy_ecs_ldtk::prelude::*;
 use hashbrown::HashMap;
 use hashbrown::HashSet;
+use crate::resources;
 
+const FADE_Z: f32 = 10.0; // This should be above everything.
 const OVERLAY_DECORATION_NAME: &str = "OBJECTS_TOP_DECO";
 const OVERLAY_DECORATION_Z: f32 = 7.;
 const OBJECT_TOP_NAME: &str = "OBJECTS_TOP";
@@ -37,8 +44,10 @@ impl Plugin for LevelPlugin {
 		app.add_plugin(LdtkPlugin);
 		app.add_startup_system(setup_system);
 		app.add_system(make_collision_object_system);
-		app.add_system(process_spawned_level_entity);
-		app.add_system(process_spawned_level_layers);
+		app.add_system(process_spawned_level_entity_system);
+		app.add_system(process_spawned_level_layers_system);
+		app.add_system(level_door_interaction_system);
+		app.add_system(level_transition_system);
 		//.register_ldtk_int_cell::<level::WallBundle>(1) // This should match up with 'WALL' on the collision layer.
 		app.register_ldtk_int_cell_for_layer::<WallBundle>(COLLISION_LAYER_NAME, 1); // This should match up with 'WALL' on the collision layer.
 		app.register_ldtk_entity::<LevelDoor>("DOOR");
@@ -50,6 +59,20 @@ fn setup_system(
 	mut commands: Commands,
 	asset_server: ResMut<AssetServer>,
 ) {
+	// Set up a big rectangle to drawn on top of everything for level transitions.
+	// If there's a better way to fade, figure that out.
+	commands.spawn_bundle(SpriteBundle {
+		sprite: Sprite {
+			color: Color::rgba(0.0, 0.0, 0.0, 0.0),
+			custom_size: Some(Vec2::new(8000.0, 8000.0)),
+			..default()
+		},
+		transform: Transform::from_xyz(0.0, 0.0, FADE_Z),
+		..default()
+	}).insert(FadeOverlay);
+
+	commands.insert_resource(resources::LevelTransition::new());
+
 	// Load the map.
 	let ldtk_world_map = LdtkWorldBundle {
 		ldtk_handle: asset_server.load("maps.ldtk"),
@@ -68,7 +91,6 @@ pub struct LevelDoor {
 	transform: Transform, // We use only the translation, but this is important for consistency.
 	trigger_volume: Area2d,
 	destination: DoorDestination,
-
 	//#[sprite_sheet_bundle]
 	//#[bundle]
 	//sprite_bundle: SpriteSheetBundle,
@@ -129,19 +151,102 @@ impl LdtkEntity for LevelDoor {
 }
 
 fn level_door_interaction_system(
-	mut level_sets: Query<&mut LevelSet>,
-	door_query: Query<(&DoorDestination, &Area2d)>,
+	mut transition: ResMut<LevelTransition>,
+	door_query: Query<(&Transform, &Area2d, &DoorDestination), Without<Player>>,
 	mut player_query: Query<(&mut Transform, &RigidBody), With<Player>>,
 ) {
+	if transition.active() { return; }
 
+	// Check for collisions between the player and doors.
+	for (player_tf, player_body) in player_query.iter() {
+
+		for (door_tf, door_area, door_dest) in door_query.iter() {
+			if let Some(_) = minimum_separating_axis(&player_tf.translation.xy(), &player_body.size, &door_tf.translation.xy(), &door_area.size) {
+				// We are touching a door!
+				transition.start_transition_to_target(&door_dest.0);
+				break;
+			}
+		}
+	}
 }
 
-// Region -- Level Door Handling
+/// Handle a level transition.
+/// If a level transition is active, perform a fade.
+/// When the fade is complete, swap the level.
+/// When the swap is complete, look for added entities and, if we find one that matches the target, move the player there.
+/// When that's done, fade in.
+/// When the final fade is done, deactivate the transition and clear the targets.
+pub fn level_transition_system(
+	time: Res<Time>,
+	mut level: ResMut<LevelSelection>,
+	mut transition: ResMut<LevelTransition>,
+	mut fade_query: Query<&mut Sprite, With<FadeOverlay>>,
+	entity_query: Query<(&Transform, &EntityInstance), Added<EntityInstance>>,
+	mut player_query: Query<(&mut Transform, &Player), Without<EntityInstance>>,
+) {
+	if !transition.active() { return; }
+
+	// Update the level transition.
+	transition.fade_time.tick(time.delta());
+	let percent_complete = transition.fade_time.percent();
+	// Set the fade.
+	if let Ok(mut fade) = fade_query.get_single_mut() {
+		let alpha = if transition.fade_out {
+			percent_complete
+		} else {
+			1.0 - percent_complete
+		};
+		fade.color = Color::rgba(0.0, 0.0, 0.0, alpha);
+	}
+
+	// Check if the destination is loaded.
+	let destination_level_loaded:bool = if let LevelSelection::Iid(target_iid) = level.as_ref() {
+		&transition.destination_level_iid == target_iid
+	} else {
+		false
+	};
+
+	// If we faded all the way out, start to fade in.
+	if transition.fade_time.finished() && transition.fade_out {
+		if !destination_level_loaded {
+			*level = LevelSelection::Iid(transition.destination_level_iid.clone());
+		}
+
+		// Update our fade our or our fade in.
+		// Transition in the other direction.
+		transition.fade_time.reset();
+		transition.fade_out = false;
+		transition.fade_in = true; // Start fading in.  The next frame we should correctly move the player.
+	}
+
+	// If the levels are switched and we're just starting to fade in, try and set the player's location.
+	// If we have faded out, check to see if the desired entities have been loaded.
+	if transition.fade_in && destination_level_loaded {
+		// Perform either a level swap or an entity search for the target.
+		if let Ok((mut player_tf, _)) = player_query.get_single_mut() {
+			for (transform, entity_instance) in entity_query.iter() {
+				if entity_instance.iid == transition.destination_entity_iid {
+					player_tf.translation.x = transform.translation.x;
+					player_tf.translation.y = transform.translation.y;
+				}
+			}
+		}
+	}
+
+	// Have we faded all the way in?  We're done!
+	if transition.fade_time.finished() && transition.fade_in && destination_level_loaded {
+		transition.fade_in = false;
+		// Don't worry about swapping the fade colors.  The new fade method will do that.
+	}
+}
+
+// Region END -- Level Door Handling
 
 // Region -- Level Render Order Updates
 
 // LDTK does not do any changes to world_depth, so ground does not render below objects.
-pub fn process_spawned_level_layers(
+// We could perhaps do this with a level offset in the editor?
+pub fn process_spawned_level_layers_system(
 	mut query: Query<(&mut Transform, &LayerMetadata), Added<LayerMetadata>>,
 ) {
 	for (mut transform, layer) in query.iter_mut() {
@@ -161,7 +266,7 @@ pub fn process_spawned_level_layers(
 	}
 }
 
-// Region -- Level Render Order Updates
+// Region END -- Level Render Order Updates
 
 // Region -- Level Collision
 
@@ -173,17 +278,13 @@ pub struct WallBundle {
 	wall: Wall,
 }
 
-// Region -- Level Collision
-
 // This is called when LDTK loader instances an entity.
 // Better to use the .register_ldtk_entity::<resources::LevelDoor>("Door") method, but this is an option.
-pub fn process_spawned_level_entity(
+fn process_spawned_level_entity_system(
 	mut commands: Commands,
 	slime_sprite_sheet: Res<SlimeSpriteSheet>,
 	mut player_start: ResMut<PlayerRestartPosition>,
 	entity_query: Query<(Entity, &Transform, &EntityInstance), Added<EntityInstance>>,
-	mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-	asset_server: Res<AssetServer>,
 ) {
 	for (entity, transform, entity_instance) in entity_query.iter() {
 		if entity_instance.identifier == *"PLAYER_SPAWN" {
@@ -404,3 +505,5 @@ fn explain_field(value: &FieldValue) -> String {
 		a => format!("is hard to explain: {:?}", a),
 	}
 }
+
+// Region END -- Level Collision

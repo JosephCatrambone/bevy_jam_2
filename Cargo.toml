@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 bevy = "^0.8"
-bevy_ecs_ldtk = "^0.4"
+# Use the git branch because Trouv asked for beta testers.
+#bevy_ecs_ldtk = "^0.4"
+bevy_ecs_ldtk = { git = "https://github.com/Trouv/bevy_ecs_ldtk", branch = "feat/respawn" }
 bevy_egui = "^0.15"
 bevy-inspector-egui = "^0.12"
 bitflags="^1.3"

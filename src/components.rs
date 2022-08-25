@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_ecs_ldtk::ldtk::FieldInstanceEntityReference;
 use bitflags::bitflags;
 
 #[derive(Eq, PartialEq)]
@@ -28,6 +29,9 @@ pub struct Health {
 
 #[derive(Component)]
 pub struct Dead;
+
+#[derive(Component)]
+pub struct FadeOverlay; // Assigned to the sprite to be drawn on top of everything.
 
 #[derive(Component)]
 pub struct LastFacing(pub Direction);

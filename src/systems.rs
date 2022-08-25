@@ -133,7 +133,7 @@ pub fn dynamic_dynamic_collision_system(
 
 /// Returns the minimum force that needs to be applied to 'B' to remove it from 'A'.
 /// If A and B do not overlap, returns None.
-fn minimum_separating_axis(center_a: &Vec2, size_a: &Vec2, center_b: &Vec2, size_b: &Vec2) -> Option<Vec2> {
+pub fn minimum_separating_axis(center_a: &Vec2, size_a: &Vec2, center_b: &Vec2, size_b: &Vec2) -> Option<Vec2> {
 	// TODO: Implement GJK-Collision or Minkowski-Minimum-Separating-Axis.
 	// If the two axes do not overlap, None is returned.
 	// For ergonomics, maybe we should always return a vec2?
