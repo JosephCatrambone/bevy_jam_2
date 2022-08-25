@@ -284,9 +284,12 @@ fn process_spawned_level_entity_system(
 	mut commands: Commands,
 	slime_sprite_sheet: Res<SlimeSpriteSheet>,
 	mut player_start: ResMut<PlayerRestartPosition>,
-	entity_query: Query<(Entity, &Transform, &EntityInstance), Added<EntityInstance>>,
+	level_query: Query<(Entity, &Handle<LdtkLevel>)>, // Used to assign entities as children of the level.
+	entity_query: Query<(&Transform, &EntityInstance), Added<EntityInstance>>,
 ) {
-	for (entity, transform, entity_instance) in entity_query.iter() {
+	let mut spawned_entities: Vec<Entity> = vec![];
+
+	for (transform, entity_instance) in entity_query.iter() {
 		if entity_instance.identifier == *"PLAYER_SPAWN" {
 			player_start.position.x = transform.translation.x;
 			player_start.position.y = transform.translation.y;
@@ -306,18 +309,21 @@ fn process_spawned_level_entity_system(
 				Color::rgb(1.0, 1.0, 1.0)
 			};
 
-			spawn_slime(
+			spawned_entities.push(spawn_slime(
 				&mut commands,
 				&slime_sprite_sheet,
 				Vec2::new(transform.translation.x, transform.translation.y),
 				color
-			);
-		}
-		else if entity_instance.identifier == *"NAMED_LOCATION" {
-			//if let Some(tile) = &entity_instance.tile { tile.w, tile.h, tile.x, tile.y }
-
+			));
 		}
 	}
+
+	// Set all of the spawned entities as children of the current map.
+	//let level = levels.get(level_handle).expect("Level should be loaded by this point");
+	if let Ok((level_entity, level_handle)) = level_query.get_single() {
+		//commands.entity(level_entity).with_children(|level| { level.spawn(); });
+		commands.entity(level_entity).push_children(&spawned_entities);
+	};
 }
 
 /// Stolen from the LDTK platformer source:
@@ -477,8 +483,6 @@ pub fn make_collision_object_system(
 								size: Vec2::new((((wall_rect.right+1)-wall_rect.left) * grid_size) as f32, (((wall_rect.top+1)-wall_rect.bottom) * grid_size) as f32),
 								layers: PhysicsLayer::WORLD,
 							})
-							//.insert(CollisionShape::Cuboid {
-							//.insert(PhysicMaterial {
 							.insert(Transform::from_xyz(
 								(wall_rect.left + wall_rect.right + 1) as f32 * grid_size as f32 / 2.,
 								(wall_rect.bottom + wall_rect.top + 1) as f32 * grid_size as f32 / 2.,

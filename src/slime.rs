@@ -71,7 +71,7 @@ pub fn spawn_slime(
 	spritesheet: &Res<SlimeSpriteSheet>,
 	pos: Vec2,
 	tint: Color,
-) {
+) -> Entity {
 	let mut rng = thread_rng();
 	let mut ssb = SpriteSheetBundle {
 		sprite: TextureAtlasSprite::new(0),
@@ -107,7 +107,8 @@ pub fn spawn_slime(
 			attack_cooldown: Timer::new(Duration::from_millis(ATTACK_COOLDOWN_MS), false),
 			last_frame_timer: anim_frame_timer,
 			sprite_atlas_index: 0
-		});
+		})
+		.id()
 }
 
 fn slime_ai_system(
